@@ -23,7 +23,7 @@ class Downloader:
     ## FTP URL Scheme and stores it in a FILE.
  
     def __FTPHandler(self):
-        with urllib.request.urlopen(url) as response, \
+        with urllib.request.urlopen(self.URL) as response, \
              open(self.outputFileName, 'wb') as outputFile:
             shutil.copyfileobj(response, outputFile)
 
@@ -134,10 +134,11 @@ class Downloader:
         elif self.URLScheme in ['http','https']:
             self.__startHTTP()
             #print("Job Completed")
-            exit()
+            
         else:
             print("URL Scheme is not found")
 
+        exit()
 
 
 
