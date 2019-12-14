@@ -11,14 +11,14 @@ class PyDownloader:
     def __init__(self,URL,name):
         self.URL = URL
         self.name = name
-        self.alive = None
+        self.__alive = None
         self.file_dir =  "/home/rahul/downloaded_files"
-        self.sw = Stopwatch()
+        self.__sw = Stopwatch()
         self.file_size = 0
-        self.curr_file_size = -1
+        self.__curr_file_size = -1
     def start_downloading(self):
         self.file_size = Downloader.get_file_size(self.URL)
-        self.sw.start()
+        self.__sw.start()
         obj = Downloader(self.URL,self.name)
 
     def file_merging(self):
@@ -37,26 +37,28 @@ class PyDownloader:
             for file in file_list:
                 try:
                     file_size = os.path.getsize(self.file_dir+'/'+file)
-                    self.curr_file_size += file_size
+                    self.__curr_file_size += file_size
                 except FileNotFoundError:
                     print("FileNotFoundError")
             try:
-                percentage = int((self.curr_file_size /self.file_size) * 100)
+                percentage = int((self.__curr_file_size /self.file_size) * 100)
                 filled_bar = int((bar_length/100)*percentage)
+                if filled_bar > 100:
+                    filled_bar = 100
                 sys.stdout.write("Percentage : {} |{}{}{}{}| |Time Escaped : {}\r".format(
                     str(percentage),
                     Fore.RED,
                     '#'*filled_bar,
                     Style.RESET_ALL,
                     ' '*(bar_length-filled_bar),
-                    str(str(timedelta(seconds=int(self.sw.duration))))))
+                    str(str(timedelta(seconds=int(self.__sw.duration))))))
             except ZeroDivisionError:
                 # sys.stdout.write("ERROR ECCOURED\r")
                 pass
 
 
         sys.stdout.write("\n"*2)
-        print("CURR :",self.curr_file_size )
+        print("CURR :",self.__curr_file_size )
         self.sw.stop()
             
     def main(self):
