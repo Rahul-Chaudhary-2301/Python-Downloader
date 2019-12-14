@@ -1,4 +1,5 @@
 import requests
+import time
 import os, errno
 import threading
 import urllib.parse
@@ -6,34 +7,37 @@ import urllib.request
 import shutil
 import sys
 import console
-
+import tempfile
 
 
 class Downloader:
-    def __init__(self, URL=None, name=None, output_in=None, threadLimit=16):
-        self.URL = URL
-        self.FileName = name
-        self.FileSize = None
-        self.FileDir = output_in
-        self.FileDownloaded = False
-        self.number_of_thread = threadLimit
-        self.URLScheme = None
-        self.TerminalSize = shutil.get_terminal_size()
-        self.DownloadStartTime = None
-        self.DownloadStarted = False
+    def __init__(self, URL=None, name=None, output_in=None, thread_limit=16):
+        self.url = URL
+        self.file_name = name
+        self.file_size = None
+        self.download_path = output_in
+        self.__number_of_thread = thread_limit
+        self.__url_scheme = None
 
-        if URL is None:
-            return
-        if self.FileName is None:
-            self.FileName = os.path.basename(self.URL)
-        if self.FileDir is None:
-            script_working_dir = os.path.dirname(os.path.abspath(__file__))
-            output_dir = "{}{}{}{}{}{}{}{}".format(script_working_dir,os.sep,os.pardir,os.sep,os.pardir,os.sep,'downloaded_files',os.sep)
-            os.makedirs(output_dir, exist_ok=True)
-            self.FileDir = output_dir
-        print("Saving files in: ", self.FileDir)
-        if (self.URL and self.FileName and self.FileDir) is not None:
-            self.grab(self.URL)
+        if self.url is not None:
+            self.grab(self.url, name=self.file_name,download_path = output_in)
+
+        # if self.file_name is None:
+        #     self.file_name = os.path.basename(self.url)
+        # if self.download_path is None:
+        #     self.download_path = os.getcwd()
+        # if (self.url and self.file_name and self.download_path) is not None:
+        #     self.grab(self.url)
+
+    def get_file_size(URL):
+        info = requests.head(URL)
+        try:
+            file_size = int(info.headers['content-length'])
+            return file_size
+        except:
+            print("Invalid URL")
+            return 
+
 
     def __FTPHandler(self):
         """
@@ -42,12 +46,11 @@ class Downloader:
         This Method is used to download the FILE from
         FTP URL Scheme and stores it in a FILE.
         """
-
-        with urllib.request.urlopen(self.URL) as response, \
-                open(self.FileName, 'wb') as outputFile:
+        with urllib.request.urlopen(self.url) as response, \
+                open(self.file_name, 'wb') as outputFile:
             shutil.copyfileobj(response, outputFile)
 
-    def __HTTPHandler(self, startByte, endByte, thread_number):
+    def __HTTPHandler(self, startByte, endByte, thread_number, temp_dir):
         """
         Method : __HTTPHandler(self, fileName, startByte, endByte)
 
@@ -68,44 +71,37 @@ class Downloader:
         headers = {'Range': 'bytes=%d-%d' % (startByte, endByte)}
 
         # request the specified part and get into variable
-        # r = requests.get(self.URL, headers=headers, stream=True)
+        # r = requests.get(self.url, headers=headers, stream=True)
         # open the FILE and write the content of the html page
         # into FILE.
-        # with open(self.FilePath, "r+b") as file:
-        #     file.seek(int(startByte))
-        #     print("Thread Number : {}  - startByte : {}".format(thread_number,startByte))
-        #     file.write(r.content)
-        #     file.close()
-        with requests.get(self.URL, headers=headers, stream = True) as request:
-            with open(self.FileDir+'/'+str(startByte),'wb') as file:
+        with requests.get(self.url, headers=headers, stream = True) as request:
+            with open(temp_dir.name+'/'+str(startByte),'wb') as file:
                 shutil.copyfileobj(request.raw, file)
-                # print("FileName {} \t| FileSize {}".format(self.FileDir+'/'+str(startByte),os.path.getsize(self.FileDir+'/'+str(startByte))))
+
+    def __merge_temp_file(self,temp_dir):
+        os.chdir(temp_dir.name)
+        list_temp_files = os.listdir(temp_dir.name)
+        list_temp_files = [int(i) for i in list_temp_files]
+        list_temp_files.sort()
+        print(list_temp_files)
+        file_obj = open(self.download_path+'/'+self.file_name,'w')
+        file_obj.write("\0"*self.file_size)
+        file_obj.close()
+        file_obj = open(self.download_path+'/'+self.file_name,'r+b')
+
+        for file in list_temp_files:
+            temp_file_obj = open(str(file),"rb")
+            file_obj.seek(file)
+            file_obj.write(temp_file_obj.read())
+            temp_file_obj.close()
+            
+        file_obj.close()
+        print("File Written")
+        time.sleep(1000)
+        
 
 
-    # def __DisplayStatus(self):
-    #     while self.FileDownloaded is not True:
-    #         sys.stdout.write(" "*(self.TerminalSize.columns - 21) + "Time Escaped : {}\r".format())
-    #         sys.stdout.write("{}  : {}     | Size : {}\r".format(self.FileName,self.FileSize))
-    def __Display(self):
-        while self.DownloadStarted is True:
-            # if  self.FileDownloaded is not True:
-            #     FileList = os.listdir(self.FileDir)
-            #     sum = 0
-            #     print(FileList)
-            #     for file in FileList:
-            #         try:
-            #             filesize = os.path.getsize(self.FileDir+'/'+file)
-            #             sum += filesize
-            #         except FileNotFoundError:
-            #             print("FileNotFoundError")
-            #     try:
-                    
-            #         percentage = (filesize/self.FileSize) * 100
-            #         sys.stdout.write("\t|Percentage : {} \n".format(str(percentage)))
-            #     except:
-            #         sys.stdout.write("ERROR ECCOURED\r")
-            print("A")
-
+                
 
     def __startFTP(self):
         """Method : __startFTP(self)
@@ -115,7 +111,7 @@ class Downloader:
 
         self.__FTPHandler()
 
-    def __startHTTP(self):
+    def __startHTTP(self,temp_dir):
 
         """
         Method: __startHTTP(self)
@@ -133,48 +129,26 @@ class Downloader:
         Step5: Start multithreading
         Step6: Join all threads
         """
-
-        info = requests.head(self.URL)
-        try:
-            self.FileSize = int(info.headers['content-length'])
-        except:
-            print("Invalid URL")
-            return
-
-        part = int(self.FileSize / self.number_of_thread)
-        self.FilePath = self.FileDir +os.sep +self.FileName
-        # file = open(self.FilePath , "wb")
-        # file.write('\0'.encode() * self.FileSize)
-        # file.close()
-        sys.stdout.write("URL : {} \n".format(self.URL))
-        # sys.stdout.write("\tDownloading : {} [Size : {}]\r".format(self.FileName,self.FileSize))
+        self.file_size = Downloader.get_file_size(self.url)
+        part = int(self.file_size / self.__number_of_thread)
         
-        for i in range(self.number_of_thread):
+
+        for i in range(self.__number_of_thread):
             start = part * i
             end = start + part
-            # sys.stdout.write("Thread " + str(i) + " Started. \r")
             # create a Thread with start and end locations
             t = threading.Thread(target=self.__HTTPHandler, kwargs={
-                'startByte': start, 'endByte': end, 'thread_number': i})
+                'startByte': start, 'endByte': end, 'thread_number': i, 'temp_dir' : temp_dir})
             
             t.setDaemon(False)   
             t.start()        
             
-        
-        # for th in threading.enumerate():
-        #     if th.daemon:
-        #         th.join()
-        self.FileDownloaded = True
-        self.DownloadStarted = False
         t.join()
         del t
-        # s.join()
-        # del s
-        sys.stdout.flush()
-        
-        # sys.stdout.write("Downloaded : {}\n".format(self.FileName))
 
-    def grab(self, URL=None, name=None):
+        sys.stdout.flush()
+
+    def grab(self, URL, **kwargs):
         """
         Method : grab(self, URL, name = None)
 
@@ -186,32 +160,39 @@ class Downloader:
         the FILE. IT calls the start methods where actually
         FILE Downloading starts.
         """
-        if self.URL is None:
-            self.URL = URL
+
+        self.url = URL
         # Getting the name of the file. This option only works for one level of nesting.
         # Changes to the submodule inside of another submodule will not be pushed.
-        if name is None:
-            if self.FileName is None:
-                self.FileName = os.path.basename(self.URL)
+        if (('name' in kwargs.keys() and kwargs['name'])is None) or \
+            ('name' not in kwargs.keys()):
+            self.file_name = os.path.basename(self.url)
+        elif 'name' in kwargs.keys():
+            self.file_name = kwargs['name']
+
+        if (('download_path' in kwargs.keys() and kwargs['download_path'])is None) or \
+            ('download_path' not in kwargs.keys()):
+            self.download_path = os.getcwd()
         else:
-            self.FileName = name
-        # Getting URL scheme
-        self.URLScheme = urllib.parse.urlparse(URL).scheme
-        # Starting Handler
-        if self.URLScheme == 'ftp':
-            self.__startFTP()
-        elif self.URLScheme in ['http', 'https']:
-            # e = Event()
-            # self.DownloadStarted = True
-            # p2 = Process(target = self.__Display)
-            # p2.start()
-            # p1 = Process(target = self.__startHTTP)
-            # p1.start()
+            self.download_path = kwargs['download_path']
+
+        
             
-            # e.set()
-            # p2.join()
-            # p1.join()
-            self.__startHTTP()
+        # Getting URL scheme
+        self.__url_scheme = urllib.parse.urlparse(URL).scheme
+
+        # Starting Handler
+        if self.__url_scheme == 'ftp':
+            self.__startFTP()
+        elif self.__url_scheme in ['http', 'https']:
+            temp_dir = tempfile.TemporaryDirectory()
+            print("TEMP : ",temp_dir.name)
+            self.__startHTTP(temp_dir)
+            self.__merge_temp_file(temp_dir)
             
         else:
             print("URL Scheme is not found")
+
+
+
+
